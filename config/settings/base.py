@@ -1,7 +1,6 @@
 # ruff: noqa: ERA001, E501
 """Base settings to build other settings files upon."""
 
-
 from pathlib import Path
 
 import environ
@@ -267,7 +266,7 @@ LOGGING = {
             "level": "INFO",
             "class": "logging.FileHandler",
             "filename": "crews.log",
-            "formatter": "simple", # Simpler format for the text file
+            "formatter": "simple",  # Simpler format for the text file
         },
     },
     "loggers": {
@@ -275,7 +274,7 @@ LOGGING = {
         "crews": {
             "handlers": ["console", "crew_file"],
             "level": "INFO",
-            "propagate": False, # Prevents double-logging to the root logger
+            "propagate": False,  # Prevents double-logging to the root logger
         },
     },
     "root": {"level": "INFO", "handlers": ["console"]},

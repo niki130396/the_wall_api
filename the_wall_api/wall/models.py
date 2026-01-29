@@ -16,7 +16,7 @@ class WallProfile(models.Model):
         if day is not None:
             logs = logs.filter(day_number__lte=day)
 
-        total_ice = logs.aggregate(total=Sum('ice_used'))['total'] or 0
+        total_ice = logs.aggregate(total=Sum("ice_used"))["total"] or 0
         return total_ice * 1900  # 1900 Gold Dragons per cubic yard
 
 
@@ -24,11 +24,14 @@ class DailyLog(models.Model):
     profile = models.ForeignKey(
         WallProfile,
         on_delete=models.CASCADE,
-        related_name='logs'
+        related_name="logs",
     )
     day_number = models.PositiveIntegerField()
     ice_used = models.PositiveIntegerField()
 
     class Meta:
-        unique_together = ('profile', 'day_number')
-        ordering = ['day_number']
+        unique_together = ("profile", "day_number")
+        ordering = ["day_number"]
+
+    def __str__(self):
+        return f"Day {self.day_number} - {self.profile.name}"
