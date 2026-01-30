@@ -160,7 +160,8 @@ class Command(BaseCommand):
         # Bulk update all sections in the database
         self._save_sections_to_database(sections)
 
-    def _load_sections_into_memory(self):
+    @staticmethod
+    def _load_sections_into_memory():
         """
         Load all wall sections from database into memory as dictionaries.
 
@@ -195,7 +196,8 @@ class Command(BaseCommand):
                 section["section_index"],
             )
 
-    def _save_sections_to_database(self, sections):
+    @staticmethod
+    def _save_sections_to_database(sections):
         """Bulk update all section heights in the database."""
         section_objects = []
         for section_data in sections:

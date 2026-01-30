@@ -17,11 +17,11 @@ The Wall API is a Django REST Framework application that tracks the construction
 - **Daily Logging**: Track ice consumption for each wall profile by day
 - **Cost Calculation**: Automatic cost calculation (ice used × 1,900 Gold Dragons)
 - **API Endpoints**:
-  - `/api/walls/{profile_number}/days/{day_number}/` - Get daily ice usage for a specific profile
-  - `/api/walls/{profile_number}/overview/` - Get complete profile overview with total costs
-  - `/api/walls/{profile_number}/overview/{day_number}/` - Get profile overview up to a specific day
-  - `/api/walls/overview/` - Get global overview of all profiles
-  - `/api/walls/overview/{day_number}/` - Get global overview up to a specific day
+  - `/api/profiles/{profile_number}/days/{day_number}/` - Get daily ice usage for a specific profile
+  - `/api/profiles/{profile_number}/overview/` - Get complete profile overview with total costs
+  - `/api/profiles/{profile_number}/overview/{day_number}/` - Get profile overview up to a specific day
+  - `/api/profiles/overview/` - Get global overview of all profiles
+  - `/api/profiles/overview/{day_number}/` - Get global overview up to a specific day
 
 ### Tech Stack
 

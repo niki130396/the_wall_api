@@ -1,3 +1,6 @@
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,8 +16,8 @@ class WallViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = WallProfile.objects.all()
     lookup_field = "profile_number"
 
-    # @method_decorator(cache_page(60 * 60))
-    # @method_decorator(vary_on_cookie)
+    @method_decorator(cache_page(60 * 60))
+    @method_decorator(vary_on_cookie)
     @action(detail=True, methods=["get"], url_path=r"days/(?P<day_number>\d+)")
     def daily_ice(self, request, profile_number=None, day_number=None):
         profile = self.get_object()
@@ -28,8 +31,8 @@ class WallViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return Response(serializer.data)
 
-    # @method_decorator(cache_page(60 * 60))
-    # @method_decorator(vary_on_cookie)
+    @method_decorator(cache_page(60 * 60))
+    @method_decorator(vary_on_cookie)
     @action(detail=True, methods=["get"], url_path=r"overview(?:/(?P<day_number>\d+))?")
     def profile_overview(self, request, profile_number=None, day_number=None):
         profile = self.get_object()
@@ -40,8 +43,8 @@ class WallViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return Response(serializer.data)
 
-    # @method_decorator(cache_page(60 * 60))
-    # @method_decorator(vary_on_cookie)
+    @method_decorator(cache_page(60 * 60))
+    @method_decorator(vary_on_cookie)
     @action(
         detail=False,
         methods=["get"],
