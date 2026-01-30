@@ -1,49 +1,145 @@
-# the_wall_api
+# The Wall API
 
-Behold My Awesome Project!
+A Django REST API for tracking the construction of The Wall - managing wall profiles, daily ice consumption logs, and calculating construction costs in Gold Dragons.
 
 [![Built with Cookiecutter Django](https://img.shields.io/badge/built%20with-Cookiecutter%20Django-ff69b4.svg?logo=cookiecutter)](https://github.com/cookiecutter/cookiecutter-django/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 License: MIT
 
-## Settings
+## Project Overview
 
-Moved to [settings](https://cookiecutter-django.readthedocs.io/en/latest/1-getting-started/settings.html).
+The Wall API is a Django REST Framework application that tracks the construction of wall profiles with daily ice consumption logs. Each wall profile consists of multiple sections, and the system calculates costs based on ice usage at 1,900 Gold Dragons per cubic yard.
 
-## Basic Commands
+### Key Features
 
-### Setting Up Your Users
+- **Wall Profile Management**: Create and manage wall profiles with unique identifiers
+- **Daily Logging**: Track ice consumption for each wall profile by day
+- **Cost Calculation**: Automatic cost calculation (ice used × 1,900 Gold Dragons)
+- **API Endpoints**:
+  - `/api/walls/{profile_number}/days/{day_number}/` - Get daily ice usage for a specific profile
+  - `/api/walls/{profile_number}/overview/` - Get complete profile overview with total costs
+  - `/api/walls/{profile_number}/overview/{day_number}/` - Get profile overview up to a specific day
+  - `/api/walls/overview/` - Get global overview of all profiles
+  - `/api/walls/overview/{day_number}/` - Get global overview up to a specific day
 
-- To create a **normal user account**, just go to Sign Up and fill out the form. Once you submit it, you'll see a "Verify Your E-mail Address" page. Go to your console to see a simulated email verification message. Copy the link into your browser. Now the user's email should be verified and ready to go.
+### Tech Stack
 
-- To create a **superuser account**, use this command:
+- **Python 3.13**
+- **Django 6.0.1**
+- **Django REST Framework 3.16.1**
+- **PostgreSQL** (via psycopg)
+- **Redis** (for caching)
+- **uv** (package management)
 
-      uv run python manage.py createsuperuser
+## Getting Started
 
-For convenience, you can keep your normal user logged in on Chrome and your superuser logged in on Firefox (or similar), so that you can see how the site behaves for both kinds of users.
+### Prerequisites
 
-### Type checks
+- Python 3.13
+- PostgreSQL
+- Redis
+- [uv](https://github.com/astral-sh/uv) (Python package manager)
 
-Running type checks with mypy:
+### Installation
 
-    uv run mypy the_wall_api
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd the_wall_api
+   ```
 
-### Test coverage
+2. Install dependencies using uv:
+   ```bash
+   uv sync
+   ```
 
-To run the tests, check your test coverage, and generate an HTML coverage report:
+3. Set up environment variables (see `.envs/.local/` for examples)
 
-    uv run coverage run -m pytest
-    uv run coverage html
-    uv run open htmlcov/index.html
+4. Run database migrations:
+   ```bash
+   uv run python manage.py migrate
+   ```
 
-#### Running tests with pytest
+5. Create a superuser (optional):
+   ```bash
+   uv run python manage.py createsuperuser
+   ```
 
-    uv run pytest
+6. Load initial wall data (if available):
+   ```bash
+   uv run python manage.py load_wall_data wall_config.txt
+   ```
 
-### Live reloading and Sass CSS compilation
+### Running the Development Server
 
-Moved to [Live reloading and SASS compilation](https://cookiecutter-django.readthedocs.io/en/latest/2-local-development/developing-locally.html#using-webpack-or-gulp).
+Start the Django development server:
+
+```bash
+uv run python manage.py runserver
+```
+
+The API will be available at `http://localhost:8000/api/`
+
+## Development
+
+### Running Tests
+
+Run the test suite with pytest:
+
+```bash
+uv run pytest
+```
+
+### Test Coverage
+
+Generate a coverage report:
+
+```bash
+uv run coverage run -m pytest
+uv run coverage html
+open htmlcov/index.html
+```
+
+### Type Checking
+
+Run type checks with mypy:
+
+```bash
+uv run mypy the_wall_api
+```
+
+### Code Linting
+
+The project uses Ruff for linting. Pre-commit hooks are configured to automatically check code quality:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+## API Documentation
+
+Once the server is running, you can access the interactive API documentation at:
+
+- Swagger UI: `http://localhost:8000/api/docs/`
+- ReDoc: `http://localhost:8000/api/redoc/`
+
+## Project Structure
+
+```
+the_wall_api/
+├── the_wall_api/
+│   └── wall/              # Main wall tracking app
+│       ├── models.py      # WallProfile and DailyLog models
+│       ├── views.py       # API viewsets
+│       ├── serializers.py # DRF serializers
+│       ├── management/    # Management commands
+│       └── tests/         # Test suite
+├── config/                # Django settings
+├── compose/               # Docker compose configurations
+└── manage.py             # Django management script
+```
 
 ## Deployment
 

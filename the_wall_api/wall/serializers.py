@@ -1,9 +1,8 @@
 from django.db.models import Sum
 from rest_framework import serializers
 
+from the_wall_api.wall.constants import COST_PER_CUBIC_YARD
 from the_wall_api.wall.models import WallProfile
-
-COST_PER_CUBIC_YARD = 1900
 
 
 class DailyIceSerializer(serializers.Serializer):
@@ -49,4 +48,4 @@ class GlobalOverviewSerializer(serializers.Serializer):
             logs = logs.filter(day_number__lte=day_number)
 
         total_ice = logs.aggregate(total=Sum("ice_used"))["total"] or 0
-        return f"{total_ice * 1900:,}"
+        return f"{total_ice * COST_PER_CUBIC_YARD:,}"

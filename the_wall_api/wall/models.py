@@ -1,11 +1,13 @@
 from django.db import models
 from django.db.models import Sum
 
+from the_wall_api.wall.constants import COST_PER_CUBIC_YARD
+
 
 class WallProfile(models.Model):
     name = models.CharField(max_length=255, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    profile_number = models.PositiveIntegerField(unique=True)
+    profile_number = models.PositiveIntegerField(unique=True, db_index=True)
 
     def __str__(self):
         return self.name
@@ -17,7 +19,25 @@ class WallProfile(models.Model):
             logs = logs.filter(day_number__lte=day)
 
         total_ice = logs.aggregate(total=Sum("ice_used"))["total"] or 0
-        return total_ice * 1900  # 1900 Gold Dragons per cubic yard
+        return total_ice * COST_PER_CUBIC_YARD
+
+
+class WallSection(models.Model):
+    profile = models.ForeignKey(
+        WallProfile,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    section_index = models.PositiveIntegerField()
+    # Adding an index here is crucial for performance with large config files
+    height = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        unique_together = ("profile", "section_index")
+        ordering = ["profile", "section_index"]
+
+    def __str__(self):
+        return f"{self.profile.name} - Section {self.section_index} ({self.height}ft)"
 
 
 class DailyLog(models.Model):
@@ -26,7 +46,7 @@ class DailyLog(models.Model):
         on_delete=models.CASCADE,
         related_name="logs",
     )
-    day_number = models.PositiveIntegerField()
+    day_number = models.PositiveIntegerField(db_index=True)
     ice_used = models.PositiveIntegerField()
 
     class Meta:

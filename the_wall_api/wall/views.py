@@ -8,8 +8,6 @@ from the_wall_api.wall.serializers import DailyIceSerializer
 from the_wall_api.wall.serializers import GlobalOverviewSerializer
 from the_wall_api.wall.serializers import ProfileOverviewSerializer
 
-COST_PER_CUBIC_YARD = 1900
-
 
 class WallViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = WallProfile.objects.all()
