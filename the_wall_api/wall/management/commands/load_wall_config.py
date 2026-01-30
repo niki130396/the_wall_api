@@ -26,6 +26,10 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # 1. Clear previous simulation data
+        DailyLog.objects.all().delete()
+        WallProfile.objects.all().delete()
+
         sections_to_build = self.parse_config(options["file_path"])
 
         num_teams = self.num_teams_from_file
@@ -36,33 +40,32 @@ class Command(BaseCommand):
 
         day = 1
         while any(s["height"] < MAX_HEIGHT for s in sections_to_build):
-            active_sections = [s for s in sections_to_build if s["height"] < MAX_HEIGHT]
+            # Get only sections that need work
+            active_sections = sorted(
+                [s for s in sections_to_build if s["height"] < MAX_HEIGHT],
+                key=lambda x: x["height"],
+            )
 
-            # 1. Create a list of assignments for the day
-            # Format: [(1, section_A), (2, section_B), (3, None)...]
             assignments = []
-            for i in range(1, num_teams + 1):
-                section = (
-                    active_sections[i - 1] if (i - 1) < len(active_sections) else None
-                )
-                assignments.append((i, section))
+            for i in range(num_teams):
+                # Assign team to the next available section in the list
+                section = active_sections[i] if i < len(active_sections) else None
+                assignments.append((i + 1, section))
 
-            # 2. Dispatch to the pool
+            # Dispatch work for the day
             with ThreadPoolExecutor(max_workers=num_teams) as executor:
+                # Use a list to force the generator to evaluate/complete
                 list(
                     executor.map(
-                        lambda a, d=day: self.execute_team_job(
-                            a[0],
-                            a[1],
-                            d,
-                        ),
+                        lambda a, d=day: self.execute_team_job(a[0], a[1], d),
                         assignments,
                     ),
                 )
 
-            # 3. Record ice for sections that actually had work done
-            actual_work = [a[1] for a in assignments if a[1] is not None]
-            self.record_ice_usage(actual_work, day)
+            # Record total ice used by profile for THIS day
+            worked_on_this_day = [a[1] for a in assignments if a[1] is not None]
+            if worked_on_this_day:
+                self.record_ice_usage(worked_on_this_day, day)
 
             day += 1
 
@@ -111,6 +114,10 @@ class Command(BaseCommand):
                         "height": h,
                     },
                 )
+        # Sort so that we prioritize the first section of every profile first,
+        # then the second section of every profile, etc.
+        # This ensures teams spread out across profiles.
+        sections.sort(key=lambda x: x["section_id"].split("-")[1])
         return sections
 
     @staticmethod

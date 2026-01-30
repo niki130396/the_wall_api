@@ -25,7 +25,7 @@ class ProfileOverviewSerializer(serializers.ModelSerializer):
     def get_cost(self, obj):
         day_number = self.context.get("day_number")
         logs = obj.logs.all()
-        if day_number:
+        if day_number is not None:
             logs = logs.filter(day_number__lte=day_number)
 
         total_ice = logs.aggregate(total=Sum("ice_used"))["total"] or 0
@@ -33,15 +33,20 @@ class ProfileOverviewSerializer(serializers.ModelSerializer):
 
 
 class GlobalOverviewSerializer(serializers.Serializer):
-    day = serializers.CharField()
+    day = serializers.SerializerMethodField()
     cost = serializers.SerializerMethodField()
 
+    def get_day(self, obj):
+        day = self.context.get("day_number")
+        return str(day) if day is not None else "None"
+
     def get_cost(self, obj):
-        # In this case, 'obj' is the QuerySet of DailyLogs passed from the view
         day_number = self.context.get("day_number")
-        logs = obj
-        if day_number:
+        logs = obj  # This is DailyLog.objects.all() from the view
+
+        if day_number is not None:
+            # Now that day_number is an int, __lte will work perfectly
             logs = logs.filter(day_number__lte=day_number)
 
         total_ice = logs.aggregate(total=Sum("ice_used"))["total"] or 0
-        return f"{total_ice * COST_PER_CUBIC_YARD:,}"
+        return f"{total_ice * 1900:,}"
