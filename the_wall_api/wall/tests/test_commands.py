@@ -1,3 +1,17 @@
+"""
+Tests for wall management commands.
+
+To run all tests:
+    pytest the_wall_api/wall/tests/test_commands.py
+
+To skip slow tests (recommended for regular development):
+    pytest the_wall_api/wall/tests/test_commands.py -m "not slow"
+
+To run only slow tests:
+    pytest the_wall_api/wall/tests/test_commands.py -m "slow"
+"""
+
+import logging
 import tempfile
 from io import StringIO
 from pathlib import Path
@@ -8,8 +22,10 @@ from django.core.management import call_command
 from the_wall_api.wall.models import DailyLog
 from the_wall_api.wall.models import WallProfile
 
+logger = logging.getLogger(__name__)
 
-@pytest.mark.django_db
+
+@pytest.mark.django_db(transaction=True)
 class TestLoadWallConfigCommand:
     """Tests for load_wall_config management command"""
 
@@ -217,12 +233,15 @@ class TestCreateWallConfigCommand:
 
             with Path(config_path).open() as f:
                 lines = f.readlines()
-                # Default is 5 profiles
-                assert len(lines) == 5  # noqa: PLR2004
+                # Default is 5 profiles + 1 line for team count
+                assert len(lines) == 6  # noqa: PLR2004
 
-                # Each line should have 2000 sections (default)
+                # Each profile line should have 2000 sections (default)
                 first_line_sections = len(lines[0].split())
                 assert first_line_sections == 2000  # noqa: PLR2004
+
+                # Last line should be the team count (default 5)
+                assert lines[-1].strip() == "5"
 
             assert "Successfully generated" in out.getvalue()
 
@@ -245,17 +264,19 @@ class TestCreateWallConfigCommand:
                 "3",
                 "--sections",
                 "10",
+                "--teams",
+                "7",
             )
 
             assert Path(config_path).exists()
 
             with Path(config_path).open() as f:
                 lines = f.readlines()
-                # Should have 3 profiles
-                assert len(lines) == 3  # noqa: PLR2004
+                # Should have 3 profiles + 1 team count line
+                assert len(lines) == 4  # noqa: PLR2004
 
-                # Each line should have 10 sections
-                for line in lines:
+                # Each profile line should have 10 sections
+                for line in lines[:-1]:  # All lines except the last
                     sections = line.strip().split()
                     assert len(sections) == 10  # noqa: PLR2004
 
@@ -263,6 +284,9 @@ class TestCreateWallConfigCommand:
                     for height in sections:
                         h = int(height)
                         assert 0 <= h <= 30  # noqa: PLR2004
+
+                # Last line should be the team count
+                assert lines[-1].strip() == "7"
 
         finally:
             if Path(config_path).exists():
@@ -314,7 +338,7 @@ class TestCreateWallConfigCommand:
 
             with Path(config_path).open() as f:
                 lines = f.readlines()
-                assert len(lines) == 1
+                assert len(lines) == 2  # noqa: PLR2004
                 assert len(lines[0].split()) == 5  # noqa: PLR2004
 
         finally:

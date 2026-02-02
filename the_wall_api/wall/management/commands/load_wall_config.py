@@ -8,12 +8,17 @@ The command operates in two phases:
    sections
 """
 
+import io
 import logging
+import queue
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Thread
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import connection
+from django.db import connections
+from django.db.models import F
 
 from the_wall_api.wall.constants import DEFAULT_TEAM_COUNT
 from the_wall_api.wall.constants import ICE_PER_FOOT
@@ -61,18 +66,38 @@ class Command(BaseCommand):
         WallSection.objects.all().delete()
         WallProfile.objects.all().delete()
 
-    def _load_config_file(self, file_path):
+    def _load_config_file(self, file_path, batch_size=100):
         """
-        Stream config file into database without loading entire file into memory.
+        Stream config file into database using micro-batching for performance.
 
         Config file format:
         - Each line (except the last) contains space-separated section heights
           for a profile
         - Last line contains the number of construction teams
 
+        Args:
+            file_path: Path to the configuration file
+            batch_size: Number of profiles to batch in a single transaction
+             (default: 100)
+
         Returns:
             int: Number of teams from the config file
         """
+        batch_queue = queue.Queue(maxsize=5)
+
+        def worker():
+            while True:
+                batch = batch_queue.get()
+                if batch is None:
+                    break
+                try:
+                    self._create_profiles_batch(batch)
+                finally:
+                    batch_queue.task_done()
+
+        consumer = Thread(target=worker, daemon=True)
+        consumer.start()
+
         with Path(file_path).open() as f:
             # Filter out empty lines using a generator for memory efficiency
             lines = (line.strip() for line in f if line.strip())
@@ -83,12 +108,29 @@ class Command(BaseCommand):
                 msg = "The config file is empty."
                 raise ValueError(msg)
 
-            # Process each line as a profile until we reach the last line (team count)
+            # Batch profiles for efficient bulk insertion
+            profile_batch = []
             profile_number = 1
+
             for current_line in lines:
-                self._create_profile_with_sections(previous_line, profile_number)
+                profile_batch.append((previous_line, profile_number))
                 profile_number += 1
+
+                # When batch is full, insert it
+                if len(profile_batch) >= batch_size:
+                    batch_queue.put(profile_batch)
+                    profile_batch = []
+
                 previous_line = current_line
+
+            # Insert any remaining profiles in the batch
+            if profile_batch:
+                batch_queue.put(profile_batch)
+
+            batch_queue.put(None)
+            consumer.join()
+
+            logger.info("Ingestion complete: %s profiles total", profile_number - 1)
 
             # Last line should be the team count
             return self._parse_team_count(previous_line)
@@ -107,134 +149,128 @@ class Command(BaseCommand):
             return DEFAULT_TEAM_COUNT
 
     def _simulate_construction(self, team_count):
-        """
-        Simulate day-by-day construction.
-
-        Load sections into memory, simulate using threading on in-memory data,
-        then bulk-update database at the end for efficiency and thread-safety.
-        """
-        # Load all sections into memory as dictionaries for thread-safe manipulation
-        sections = self._load_sections_into_memory()
-
         day = 1
-        while any(s["height"] < MAX_HEIGHT for s in sections):
-            # Get sections that need work, sorted by height
-            active_sections = sorted(
-                [s for s in sections if s["height"] < MAX_HEIGHT],
-                key=lambda x: (x["height"], x["profile_number"]),
-            )[:team_count]
 
-            if not active_sections:
-                break
+        # Create the pool ONCE to reuse threads and connections
+        with ThreadPoolExecutor(max_workers=team_count) as executor:
+            while True:
+                # 1. Fetch work (Memory Efficient)
+                sections_to_work_on = list(
+                    WallSection.objects.filter(height__lt=MAX_HEIGHT)
+                    .select_related("profile")
+                    .order_by("height", "profile__profile_number")[:team_count],
+                )
 
-            # Prepare assignments (team_id, section or None)
-            assignments = [
-                (i + 1, active_sections[i] if i < len(active_sections) else None)
-                for i in range(team_count)
-            ]
+                if not sections_to_work_on:
+                    logger.info("Construction complete on day %s", day - 1)
+                    break
 
-            # Execute work in parallel threads
-            # Use a helper to avoid loop variable binding issue in lambda
-            current_day = day
-            with ThreadPoolExecutor(max_workers=team_count) as executor:
+                work_assignments = [
+                    {
+                        "team_id": i + 1,
+                        "section_id": section.id,
+                        "profile_name": section.profile.name,
+                        "section_index": section.section_index,
+                        "profile_id": section.profile_id,
+                    }
+                    for i, section in enumerate(sections_to_work_on)
+                ]
+
+                # 2. Execute parallel updates
+                # list() forces the generator to finish so we know Day X is done
                 list(
                     executor.map(
-                        lambda assignment, d=current_day: self._execute_team_work(
-                            assignment[0],
-                            assignment[1],
-                            d,
-                        ),
-                        assignments,
+                        lambda w, d=day: self._execute_team_work(w, d),
+                        work_assignments,
                     ),
                 )
 
-            # Record daily progress for sections that had work done
-            worked_on = [a[1] for a in assignments if a[1] is not None]
-            if worked_on:
-                self._record_daily_progress(worked_on, day)
-
-            day += 1
-
-        logger.info("Construction complete on day %s", day - 1)
-
-        # Bulk update all sections in the database
-        self._save_sections_to_database(sections)
+                # 3. Bulk log (Postgres loves bulk inserts)
+                self._record_daily_progress_from_assignments(work_assignments, day)
+                day += 1
 
     @staticmethod
-    def _load_sections_into_memory():
-        """
-        Load all wall sections from database into memory as dictionaries.
+    def _execute_team_work(work_assignment, day):
+        # Use the 'default' connection explicitly in threads
+        conn = connections["default"]
+        try:
+            WallSection.objects.filter(id=work_assignment["section_id"]).update(
+                height=F("height") + 1,
+            )
 
-        Returns a list of dicts for thread-safe in-memory manipulation.
-        """
-        return [
-            {
-                "id": section.id,
-                "profile_id": section.profile_id,
-                "profile_name": section.profile.name,
-                "profile_number": section.profile.profile_number,
-                "section_index": section.section_index,
-                "height": section.height,
-            }
-            for section in WallSection.objects.select_related("profile").all()
-        ]
-
-    @staticmethod
-    def _execute_team_work(team_id, section, day):
-        """
-        Execute work for a single team on a single section.
-
-        Modifies the in-memory section dict - no database access, so thread-safe.
-        """
-        if section:
-            section["height"] += 1
             logger.info(
                 "Day %s: Team %s worked on %s Section %s",
                 day,
-                team_id,
-                section["profile_name"],
-                section["section_index"],
+                work_assignment["team_id"],
+                work_assignment["profile_name"],
+                work_assignment["section_index"],
             )
+        finally:
+            # Important: Don't close if using a connection proxy,
+            # but for standard commands, this prevents the freeze.
+            conn.close()
 
-    @staticmethod
-    def _save_sections_to_database(sections):
-        """Bulk update all section heights in the database."""
-        section_objects = []
-        for section_data in sections:
-            section = WallSection(
-                id=section_data["id"],
-                profile_id=section_data["profile_id"],
-                section_index=section_data["section_index"],
-                height=section_data["height"],
-            )
-            section_objects.append(section)
-
-        WallSection.objects.bulk_update(section_objects, ["height"])
-
-    @transaction.atomic
-    def _create_profile_with_sections(self, line, profile_number):
+    # @transaction.atomic
+    def _create_profiles_batch(self, profile_batch):
         """
-        Create a wall profile and its sections in a single database transaction.
+        Create multiple profiles and their sections in a single transaction.
+
+        Uses bulk operations for maximum performance. Batching profiles reduces
+        the number of database transactions from N to N/batch_size.
 
         Args:
-            line: Space-separated string of section heights (e.g., "21 25 28")
-            profile_number: Sequential profile identifier
+            profile_batch: List of tuples (line, profile_number)
         """
-        heights = [int(h) for h in line.split()]
+        batch_start = profile_batch[0][1]
+        batch_end = profile_batch[-1][1]
 
-        profile = WallProfile.objects.create(
-            profile_number=profile_number,
-            name=f"Profile {profile_number}",
+        logger.info(
+            "Starting transaction for profiles %s-%s (%s profiles)",
+            batch_start,
+            batch_end,
+            len(profile_batch),
         )
 
-        sections = [
-            WallSection(profile=profile, section_index=index, height=height)
-            for index, height in enumerate(heights)
+        # Step 1: Bulk create all profiles in the batch
+        profiles_to_create = [
+            WallProfile(
+                profile_number=profile_number,
+                name=f"Profile {profile_number}",
+            )
+            for line, profile_number in profile_batch
         ]
-        WallSection.objects.bulk_create(sections)
+        created_profiles = WallProfile.objects.bulk_create(profiles_to_create)
+
+        output = io.StringIO()
+        section_count = 0
+        for profile, (line, _) in zip(created_profiles, profile_batch, strict=True):
+            heights = [int(h) for h in line.split()]
+            for idx, h in enumerate(heights):
+                output.write(f"{profile.id}\t{idx}\t{h}\n ")
+                section_count += 1
+
+        content = output.getvalue().strip()
+        if not content:
+            return
+
+        with (
+            connection.cursor() as cursor,
+            cursor.copy(
+                "COPY wall_wallsection (profile_id, section_index, height) FROM STDIN",
+            ) as copy,
+        ):
+            copy.write(content)
+
+        output.close()
+
+        logger.info(
+            "Transaction completed: Created %s profiles and %s sections",
+            len(created_profiles),
+            section_count,
+        )
 
     @staticmethod
-    def _record_daily_progress(sections, day):
+    def _record_daily_progress_from_assignments(work_assignments, day):
         """
         Record ice consumption for all profiles that had work done today.
 
@@ -242,13 +278,13 @@ class Command(BaseCommand):
         Creates DailyLog entries in bulk for efficiency.
 
         Args:
-            sections: List of in-memory section dicts that had work done today
+            work_assignments: List of work assignment dicts with profile_id
             day: Current day number
         """
         # Group ice usage by profile
         ice_usage_by_profile = {}
-        for section in sections:
-            profile_id = section["profile_id"]
+        for assignment in work_assignments:
+            profile_id = assignment["profile_id"]
             ice_usage_by_profile[profile_id] = (
                 ice_usage_by_profile.get(profile_id, 0) + ICE_PER_FOOT
             )
