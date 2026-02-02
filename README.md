@@ -58,17 +58,17 @@ The Wall API is a Django REST Framework application that tracks the construction
 
 4. Run database migrations:
    ```bash
-   uv run python manage.py migrate
+   docker-compose -f docker-compose.local.yml run --rm django python manage.py migrate
    ```
 
 5. Create a superuser (optional):
    ```bash
-   uv run python manage.py createsuperuser
+   docker-compose -f docker-compose.local.yml run --rm django python manage.py createsuperuser
    ```
 
 6. Load initial wall data (if available):
    ```bash
-   uv run python manage.py load_wall_data wall_config.txt
+   docker-compose -f docker-compose.local.yml run --rm django python manage.py load_wall_data wall_config.txt
    ```
 
 ### Running the Development Server
@@ -76,7 +76,7 @@ The Wall API is a Django REST Framework application that tracks the construction
 Start the Django development server:
 
 ```bash
-uv run python manage.py runserver
+docker-compose -f docker-compose.local.yml up
 ```
 
 The API will be available at `http://localhost:8000/api/`
@@ -88,7 +88,7 @@ The API will be available at `http://localhost:8000/api/`
 Run the test suite with pytest:
 
 ```bash
-uv run pytest
+docker-compose -f docker-compose.local.yml run --rm django pytest
 ```
 
 ### Test Coverage
